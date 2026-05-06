@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-serif: "Playfair Display", serif;
+  
+  --color-brand-navy: #020617;
+  --color-brand-gold: #D4AF37;
+  --color-brand-slate: #0f172a;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-brand-navy text-slate-300 selection:bg-brand-gold/30;
+  }
+  
+  h1, h2, h3, h4 {
+    @apply font-display tracking-tight text-white;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-white/[0.03] border border-white/10 backdrop-blur-md shadow-2xl;
+  }
+  
+  .text-gradient-gold {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-gold via-[#F1D279] to-brand-gold;
+  }
+}

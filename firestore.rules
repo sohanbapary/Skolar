@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- User Validation ---
+    function isValidUser(data) {
+      return data.email is string &&
+             data.meritId is string && data.meritId.size() <= 64 &&
+             (data.get('grades', null) == null || data.grades is string) &&
+             (data.get('isVerified', false) == false || isAdmin());
+    }
+
+    // --- Application Validation ---
+    function isValidApplication(data) {
+      return data.userId == request.auth.uid &&
+             data.university is string && data.university.size() <= 200 &&
+             data.program is string && data.program.size() <= 200 &&
+             data.status in ['Draft', 'Pending', 'Accepted', 'Rejected'] &&
+             data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+             data.updatedAt == request.time;
+    }
+
+    // --- Document Validation ---
+    function isValidDocument(data) {
+      return data.userId == request.auth.uid &&
+             data.name is string && data.name.size() <= 255 &&
+             data.status in ['Uploading', 'Verified', 'Error'] &&
+             data.createdAt == request.time;
+    }
+
+    // --- Admin Check ---
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().email == existing().email &&
+                    incoming().meritId == existing().meritId &&
+                    incoming().updatedAt == request.time &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'grades', 'englishProficiency', 'leadership', 'aspirations', 'targetRegion', 'updatedAt']);
+    }
+
+    match /applications/{applicationId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(applicationId) && isValidApplication(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && 
+                    isValidApplication(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    (
+                      // Action: Standard Update
+                      incoming().diff(existing()).affectedKeys().hasOnly(['university', 'program', 'status', 'deadline', 'progress', 'updatedAt'])
+                    );
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /documents/{documentId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(documentId) && isValidDocument(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && 
+                    incoming().userId == existing().userId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['status', 'fileUrl']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /chats/{chatId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().timestamp == request.time;
+    }
+  }
+}
